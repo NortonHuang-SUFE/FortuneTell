@@ -11,6 +11,8 @@ import io
 import sys
 from contextlib import redirect_stdout
 
+from openai import OpenAI
+
 from lunar_python import Lunar, Solar
 from colorama import init
 
@@ -82,6 +84,10 @@ class BaziAnalyzer:
         self.output_sections = {}
         self.current_section = "基本信息"
         self.capture_buffer = io.StringIO()
+        self.client = OpenAI(
+            api_key="sk-c6adb72453d441ef974b99056d2e7e92",
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
+        )
         
     def add_to_section(self, text):
         """向当前部分添加文本"""
@@ -111,7 +117,7 @@ class BaziAnalyzer:
         
         return result
     
-    def analyze_bazi(self, year, month, day, time, minute=0, gender=False, solar=False, run_month=False):
+    def analyze_bazi(self, year, month, day, time, minute=0, gender=False, solar=False, run_month=-1):
         """
         分析八字并返回JSON结果
         
@@ -591,57 +597,63 @@ class BaziAnalyzer:
         
         return self.output_sections
 
-def analyze_bazi(year, month, day, time, minute=0, gender=False, solar=False, run_month=False):
-    """
-    分析一个人的八字并返回JSON结果
-    
-    参数:
-        year: 年份(整数或字符串)
-        month: 月份(整数或字符串)
-        day: 日期(整数或字符串)
-        time: 小时(整数或字符串)
-        minute: 分钟(整数或字符串)，默认为0
-        gender: 女性为True，男性为False(布尔值)
-        solar: 公历为True，农历为False(布尔值)
-        run_month: 如果是闰月则为True(布尔值)
-    
-    返回:
-        包含分析结果的JSON字符串
-    """
-    # 如果输入是字符串，则转换为整数
-    year = int(year)
-    month = int(month)
-    day = int(day)
-    time = int(time)
-    minute = int(minute)
-    
-    analyzer = BaziAnalyzer()
-    result = analyzer.analyze_bazi(year, month, day, time, minute, gender, solar, run_month)
-    
-    return json.dumps(result, ensure_ascii=False, indent=2)
+    def bazi_output(self, user_question, year, month, day, time, minute=0, gender=False, solar=False, run_month=-1):
+        """
+        使用ds-r1模型分析排盘后，返回分析结果
+        """
+        paipan_json = self.analyze_bazi(year, month, day, time, minute, gender, solar, run_month)
 
-def main():
-    parser = argparse.ArgumentParser(description='分析八字并输出JSON')
-    parser.add_argument('year', help='年份')
-    parser.add_argument('month', help='月份')
-    parser.add_argument('day', help='日期')
-    parser.add_argument('time', help='时间(24小时制)')
-    parser.add_argument('-m', '--minute', type=int, default=0, help='分钟，默认为0')
-    parser.add_argument('-b', action='store_true', default=False, help='直接输入八字')
-    parser.add_argument('-g', action='store_true', default=False, help='是否采用公历')
-    parser.add_argument('-r', action='store_true', default=False, help='是否为闰月，仅仅使用于农历')
-    parser.add_argument('-n', action='store_true', default=False, help='是否为女，默认为男')
-    
-    args = parser.parse_args()
-    
-    if args.b:
-        print("此版本不支持直接输入八字。")
-        return
-    
-    result = analyze_bazi(args.year, args.month, args.day, args.time, args.minute,
-                         gender=args.n, solar=args.g, run_month=args.r)
-    
-    print(result)
+        system_prompt = """
+            你是一个熟悉中国八字命理体系的智能助手，具备专业的命理学知识。你正在处理一个结构化的 JSON 数据，该数据是基于用户的出生信息自动生成的命理分析报告，包含以下六大类结构：
 
-if __name__ == "__main__":
-    main() 
+            1. 命盘基础信息（Basic Info）：四柱、天干地支、纳音、藏干、星宿等。
+               - 字段：基本信息、四柱、年月日时、天干、地支、地支藏干、纳音和关系、星宿
+
+            2. 五行与格局分析（Five Elements & Structure）：五行得分、用神喜忌、命格类型等。
+               - 字段：五行分数、五行根、格局分析
+
+            3. 十神与六亲分析（Ten Spirits & Family Relationship）：十神分布及与六亲的对应分析。
+               - 字段：六亲分析、天干（十神）、地支藏干（十神）
+
+            4. 神煞与地支作用（Auspicious/Unlucky Stars & Interactions）：命盘中的吉凶神煞、地支关系。
+               - 字段：神煞、地支关系、地支次要关系
+
+            5. 大运与流年走势（Luck Cycles & Annual Trends）：十年一大运，每年一流年，分析人生运势节奏。
+               - 字段：大运、大运流年
+
+            6. 古籍命理参考（Classical Text Reference）：引用《穷通宝鉴》《三命通会》等古籍内容用于命理解读。
+               - 字段：穷通宝鉴、三命通会
+
+            你应基于用户问题的语义，定位 JSON 中对应字段，尽可能用全信息，进行合理解释或预测。可引用原文，但需通俗解释。允许综合多字段信息形成判断。
+
+            最后你应该给出一段总结，以方便你和其他人进行讨论。
+
+        """
+
+        user_input = f"""
+        请根据用户提供的命理JSON 数据结构进行分析，结合内容回答以下问题。你可以引用命盘中的某些字段进行判断，并说明你的依据来自于哪一类结构（如：大运流年、五行分数、格局分析等），必要时也可以引用《穷通宝鉴》或《三命通会》的内容并进行解释。
+
+        命理JSON ： paipan_json
+
+        用户输入：【{user_question}】
+        """
+        # 使用ds-r1模型分析排盘后，返回分析结果
+        completion  = self.client.chat.completions.create(
+            model="qwq-plus",
+            messages=[
+                {"role": "user", "content": user_input},
+                {"role": "system", "content": system_prompt}
+            ],
+            max_tokens=32000,
+            temperature=0.5
+        )   
+
+        # 将content和reasoning_content合并成一个JSON对象
+        response_json = {
+            "paipan": paipan_json,
+            "content": completion.choices[0].message.content,
+            "reasoning_content": completion.choices[0].message.reasoning_content
+        }
+        
+        # 返回JSON格式的结果
+        return json.dumps(response_json, ensure_ascii=False)
