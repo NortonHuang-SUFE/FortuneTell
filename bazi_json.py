@@ -633,13 +633,13 @@ class BaziAnalyzer:
         user_input = f"""
         请根据用户提供的命理JSON 数据结构进行分析，结合内容回答以下问题。你可以引用命盘中的某些字段进行判断，并说明你的依据来自于哪一类结构（如：大运流年、五行分数、格局分析等），必要时也可以引用《穷通宝鉴》或《三命通会》的内容并进行解释。
 
-        命理JSON ： paipan_json
+        命理JSON ： {paipan_json}
 
         用户输入：【{user_question}】
         """
         # 使用ds-r1模型分析排盘后，返回分析结果
         completion  = self.client.chat.completions.create(
-            model="qwq-plus",
+            model="deepseek-r1",
             messages=[
                 {"role": "user", "content": user_input},
                 {"role": "system", "content": system_prompt}
@@ -650,9 +650,8 @@ class BaziAnalyzer:
 
         # 将content和reasoning_content合并成一个JSON对象
         response_json = {
-            "paipan": paipan_json,
-            "content": completion.choices[0].message.content,
-            "reasoning_content": completion.choices[0].message.reasoning_content
+            "paipan": paipan_json.get("四柱"),
+            "content": completion.choices[0].message.content
         }
         
         # 返回JSON格式的结果

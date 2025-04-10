@@ -33,10 +33,11 @@ from autogen_agentchat.conditions import HandoffTermination
 #     result = analyzer.interpret_bazi(user_input, verbose=False, stream_output=False)
 #     return json.dumps(result, ensure_ascii=False)
 
-async def bazi_master_tool(year: Annotated[int, "年份"], 
+async def bazi_master_tool(user_input: Annotated[str, "用户问题"],
+                           year: Annotated[int, "年份"], 
                            month: Annotated[int, "月份"], 
                            day: Annotated[int, "日期"], 
-                           time: Annotated[int, "时间"], 
+                           time: Annotated[int, "时间（24小时制）"], 
                            minute: Annotated[int, "分钟"] = 0, 
                            gender: Annotated[bool, "是否为女性"] = False, 
                            solar: Annotated[bool, "公历"] = False, 
@@ -44,7 +45,7 @@ async def bazi_master_tool(year: Annotated[int, "年份"],
     """根据用户输入的阳历或阴历的出生年份、月份、日期、时间，并结合用户是否为女性，得到用户的八字相关数据
     """
     analyzer = BaziAnalyzer()
-    result = analyzer.analyze_bazi(year, month, day, time, minute, gender, solar, run_month)
+    result = analyzer.bazi_output(user_input, year, month, day, time, minute, gender, solar, run_month)
     return result
 
 # 创建一个使用qwen-max模型的client
@@ -65,52 +66,50 @@ model_client = OpenAIChatCompletionClient(
 # web_search_tool = FunctionTool(web_search, description="在网络上查找信息")
 # bazi_analysis_tool = FunctionTool(analyze_bazi_tool, description="根据用户输入，得到用户的四柱八字、大运、流年，这是后面对八字进行分析的基础")
 # bazi_interpret_tool = FunctionTool(interpret_bazi_tool, description="根据用户八字、大运、流年，回答用户的问题")
-bazi_master_tool = FunctionTool(bazi_master_tool, description="根据用户生日信息，得到用户的四柱八字、大运、流年，这是后面对八字进行分析的基础")
+bazi_master_tool = FunctionTool(bazi_master_tool, description="根据用户的生日信息与问题，分析用户的八字，如果提及了出生地，请用真太阳时的方法调整用户的出生时间")
 
-agentPaipan = AssistantAgent(
-    name="bazi_paipan",
+agentBazi = AssistantAgent(
+    name="agentBazi",
     model_client=model_client,
     tools=[bazi_master_tool],
-    handoffs=[Handoff(target="user", message="Transfer to user.")],
     system_message="""
-    你是一个八字排盘师，根据用户输入的信息，调用工具对用户进行排盘。
-    首先，你需要分析用户的问题是否涵盖了出生的年份、月份、日期、时间，其中时间需要是24小时制。
-    如果用户的问题中没有涵盖这些信息，请把任务转移给用户"
-    如果用户的问题中涵盖了这些信息，请调用工具，并把调用工具后的json进行输出，最后回复用户："排盘完成"
+    你是一个八字命理师，用户会先说生日信息，后面的【】是用户关心的问题。
+    你应该首先解析用户的生日，如果用户提了他出生在哪里，请用真太阳时的方法调整用户的出生时间，用真太阳时的时间去传入bazi_master_tool的day和time。
+    然后你应该解析用户的问题，然后结合真太阳时去调用bazi_master_tool。
+    如果你应该去检查工具输出中有没有事实错误，如果有可以再次调用工具，重新得到答案。
+    如果你认为没有问题，请尽量详细的描述出八字分析的结果用于回答用户问题
+    """,
+    reflect_on_tool_use=True,
+)
+
+agentSummary = AssistantAgent(
+    name="bazi_summary",
+    model_client=model_client,
+    tools=[],
+    system_message="""
+    你是一个杂家，你的任务是在吸收完前面所有agent的发言后，首先判断前面各个命理学家的发言是否有事实错误，如果有，请指出错误，并且不要说【分析完成】
+    如果没有错误，请总结前面各个命理学家的发言，如果有相互矛盾的地方，请指出矛盾，总结出来并告诉用户，并给出解释。
+    如果你认为可以输出给用户了，说【分析完成】
     """,
 )
 
-# 创建用户代理
-user_proxy = UserProxyAgent("user", input_func=input)  # 使用input()从控制台获取用户输入
-
 # 创建终止条件
-handoff_termination = HandoffTermination(target="user")
-text_termination = TextMentionTermination("排盘完成")
+text_termination = TextMentionTermination("分析完成")
 
 # 创建团队
-team = RoundRobinGroupChat([agentPaipan, user_proxy], 
-                           termination_condition=handoff_termination | text_termination)
+team = RoundRobinGroupChat([agentBazi, agentSummary], 
+                           termination_condition=text_termination,
+                           max_turns=10)
 
-async def run_analysis():
-    print("=== 八字分析系统 ===")
-    print("请输入您的问题，输入'exit'退出系统。")
+async def run_bazi_analysis():
+    await team.reset()
     
-    while True:
-        user_input = input("您: ")
-        if user_input.lower() == 'exit':
-            break
-            
-        await team.reset() 
-        async for message in team.run_stream(task=user_input):
-            if isinstance(message, TaskResult):
-                print("Stop Reason:", message.stop_reason)
-            else:
-                print(message)
-        
-        print("\n-----------------------------------------")
-    
-    await model_client.close()
-    print("系统已退出，感谢使用！")
+    async for message in team.run_stream(task="我1995年12月22日早上10点25分出生在北京，想要知道【2025年运势如何，会发生什么大事】"):
+        if isinstance(message, TaskResult):
+            print("Stop Reason:", message.stop_reason)
+        else:
+            print(message)
 
+# Run the async function
 if __name__ == "__main__":
-    asyncio.run(run_analysis())
+    asyncio.run(run_bazi_analysis())
