@@ -14,10 +14,11 @@ from contextlib import redirect_stdout
 from lunar_python import Lunar, Solar
 from colorama import init
 
-from datas import *
-from sizi import summarys
-from common import *
-from yue import months
+from baziData.datas import *
+from baziData.sizi import summarys
+from baziData.common import *
+from baziData.yue import months
+from baziData.ganzhi import *
 
 def get_gen(gan, zhis):
     zhus = []
