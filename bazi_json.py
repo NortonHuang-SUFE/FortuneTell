@@ -597,11 +597,17 @@ class BaziAnalyzer:
         
         return self.output_sections
 
-    def bazi_output(self, user_question, year, month, day, time, minute=0, gender=False, solar=False, run_month=-1):
+    def bazi_output(self, user_question, bazi_json):
         """
         使用ds-r1模型分析排盘后，返回分析结果
         """
-        paipan_json = self.analyze_bazi(year, month, day, time, minute, gender, solar, run_month)
+        # 检查bazi_json是否为字符串，如果是则解析为JSON对象
+        if isinstance(bazi_json, str):
+            try:
+                bazi_json = json.loads(bazi_json)
+            except json.JSONDecodeError:
+                # 如果解析失败，保持原样
+                pass
 
         system_prompt = """
             你是一个熟悉中国八字命理体系的智能助手，具备专业的命理学知识。你正在处理一个结构化的 JSON 数据，该数据是基于用户的出生信息自动生成的命理分析报告，包含以下六大类结构：
@@ -633,7 +639,7 @@ class BaziAnalyzer:
         user_input = f"""
         请根据用户提供的命理JSON 数据结构进行分析，结合内容回答以下问题。你可以引用命盘中的某些字段进行判断，并说明你的依据来自于哪一类结构（如：大运流年、五行分数、格局分析等），必要时也可以引用《穷通宝鉴》或《三命通会》的内容并进行解释。
 
-        命理JSON ： {paipan_json}
+        命理JSON ： {bazi_json}
 
         用户输入：【{user_question}】
         """
@@ -650,7 +656,7 @@ class BaziAnalyzer:
 
         # 将content和reasoning_content合并成一个JSON对象
         response_json = {
-            "paipan": paipan_json.get("四柱"),
+            "paipan": bazi_json.get("四柱"),
             "content": completion.choices[0].message.content
         }
         
