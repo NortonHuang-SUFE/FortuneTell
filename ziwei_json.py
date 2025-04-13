@@ -11,7 +11,7 @@ class SolarAPI:
         """
         self.base_url = base_url
 
-    def get_astrolabe_data(self, date, timezone, gender, is_solar=True):
+    def get_astrolabe_data(self, date, timezone, gender, period, is_solar=True):
         """发送 POST 请求以获取星盘数据
         
         :param date: 日期字符串，格式为 "YYYY-MM-DD"
@@ -28,7 +28,8 @@ class SolarAPI:
         data = {
             "date": date,
             "timezone": timezone,
-            "gender": gender
+            "gender": gender,
+            "period": period
         }
 
         response = requests.post(url, headers=headers, data=json.dumps(data))
@@ -155,16 +156,144 @@ def convert_main_json_to_text(main_json_data):
 
     return "\n".join(output_lines)
 
+def convert_yearly_json_to_text(yearly_json_data):
+    """
+    将年度紫微斗数 JSON 数据转换为文本描述，适合大模型阅读。
 
+    参数:
+    yearly_json_data (dict): 包含年度紫微斗数信息的 JSON 数据。
 
+    返回:
+    str: 描述年度紫微斗数信息的文本字符串。
+    """
+    output_lines = []
+    
+    # 基本信息
+    output_lines.append(f"阳历日期：{yearly_json_data.get('solarDate', '未知')}")
+    output_lines.append(f"阴历日期：{yearly_json_data.get('lunarDate', '未知')}")
+    
+    # 大限信息
+    decadal_info = yearly_json_data.get('decadal', {})
+    if decadal_info:
+        output_lines.append(f"大限：{decadal_info.get('name', '')}，天干为{decadal_info.get('heavenlyStem', '')}，地支为{decadal_info.get('earthlyBranch', '')}")
+        
+        # 大限四化星
+        mutagen = decadal_info.get('mutagen', [])
+        if mutagen:
+            output_lines.append(f"大限四化星：{', '.join(mutagen)}")
+        
+        # 大限星耀
+        stars = decadal_info.get('stars', [])
+        if stars:
+            star_descriptions = []
+            for i, palace_stars in enumerate(stars):
+                if palace_stars:
+                    palace_name = decadal_info.get('palaceNames', [])[i] if i < len(decadal_info.get('palaceNames', [])) else f"宫位{i+1}"
+                    star_names = [f"{star.get('name', '')}（{star.get('type', '')}，{star.get('scope', '')}）" for star in palace_stars]
+                    star_descriptions.append(f"{palace_name}宫：{', '.join(star_names)}")
+            
+            if star_descriptions:
+                output_lines.append("大限星耀分布：")
+                for desc in star_descriptions:
+                    output_lines.append(f"  {desc}")
+    
+    # 流年信息
+    yearly_info = yearly_json_data.get('yearly', {})
+    if yearly_info:
+        output_lines.append(f"流年：{yearly_info.get('name', '')}，天干为{yearly_info.get('heavenlyStem', '')}，地支为{yearly_info.get('earthlyBranch', '')}")
+        
+        # 流年四化星
+        mutagen = yearly_info.get('mutagen', [])
+        if mutagen:
+            output_lines.append(f"流年四化星：{', '.join(mutagen)}")
+        
+        # 流年星耀
+        stars = yearly_info.get('stars', [])
+        if stars:
+            star_descriptions = []
+            for i, palace_stars in enumerate(stars):
+                if palace_stars:
+                    palace_name = yearly_info.get('palaceNames', [])[i] if i < len(yearly_info.get('palaceNames', [])) else f"宫位{i+1}"
+                    star_names = [f"{star.get('name', '')}（{star.get('type', '')}，{star.get('scope', '')}）" for star in palace_stars]
+                    star_descriptions.append(f"{palace_name}宫：{', '.join(star_names)}")
+            
+            if star_descriptions:
+                output_lines.append("流年星耀分布：")
+                for desc in star_descriptions:
+                    output_lines.append(f"  {desc}")
+        
+        # 流年将前12神和岁前12神
+        yearly_dec_star = yearly_info.get('yearlyDecStar', {})
+        if yearly_dec_star:
+            jiangqian12 = yearly_dec_star.get('jiangqian12', [])
+            suiqian12 = yearly_dec_star.get('suiqian12', [])
+            
+            if jiangqian12:
+                output_lines.append(f"流年将前12神：{', '.join(jiangqian12)}")
+            if suiqian12:
+                output_lines.append(f"流年岁前12神：{', '.join(suiqian12)}")
+    
+    return "\n".join(output_lines)
 
-# 示例 JSON 数据
-solar_api = SolarAPI("http://localhost:3000")
-json_string = solar_api.get_astrolabe_data("2000-8-16", 2, "女", is_solar=True)
+def convert_yearly_array_to_text(yearly_array):
+    """
+    将年度数组转换为文本描述，每年用横线分隔。
 
-# 将 JSON 字符串解析为 Python 字典
-main_data = json_string
+    参数:
+    yearly_array (list): 包含年度紫微斗数信息的 JSON 数组。
 
-# 转换并打印结果
-text_description = convert_main_json_to_text(main_data)
-print(text_description)
+    返回:
+    str: 描述所有年度紫微斗数信息的文本字符串。
+    """
+    output_lines = []
+    output_lines.append("---------大限与流年信息----------")
+    for i, yearly_data in enumerate(yearly_array):
+        output_lines.append(f"----------{yearly_data.get('solarDate', '未知年份')}----------")
+        yearly_text = convert_yearly_json_to_text(yearly_data)
+        output_lines.append(yearly_text)
+        
+        # 如果不是最后一年，添加分隔线
+        if i < len(yearly_array) - 1:
+            output_lines.append("----------")
+    output_lines.append("---------大限与流年信息----------")
+    return "\n".join(output_lines)
+
+def get_astrolabe_text(date, timezone, gender, period, is_solar=True, base_url="http://localhost:3000"):
+    """
+    获取紫微斗数文本描述，包括本命盘和流年信息。
+
+    参数:
+    date (str): 日期字符串，格式为 "YYYY-MM-DD"
+    timezone (int): 时区偏移量
+    gender (str): 性别
+    period (list): 时间段，格式为 ["YYYY-MM-DD", "YYYY-MM-DD"]
+    is_solar (bool): 是否为阳历数据，默认为 True
+    base_url (str): API 的基础 URL，默认为 "http://localhost:3000"
+
+    返回:
+    str: 完整的紫微斗数文本描述
+    """
+    # 初始化 API 客户端
+    solar_api = SolarAPI(base_url)
+    
+    # 获取星盘数据
+    json_data = solar_api.get_astrolabe_data(date, timezone, gender, period, is_solar)
+    
+    # 获取本命盘数据
+    main_data = json_data.get('astrolabeSolar')
+    # 获取流年数据
+    yearly_array = json_data.get('arr', [])
+    
+    # 转换本命盘数据为文本
+    main_text = convert_main_json_to_text(main_data)
+    # 转换流年数据为文本
+    yearly_text = convert_yearly_array_to_text(yearly_array)
+    
+    # 组合所有文本
+    combined_text = f"{main_text}\n\n{yearly_text}"
+    
+    return combined_text
+
+# 示例使用
+#result = get_astrolabe_text("2000-8-16", 2, "女", ["2025-01-01", "2026-01-02"])
+#print(result)
