@@ -18,6 +18,7 @@ from autogen_agentchat.conditions import HandoffTermination
 from utils.bazi_json import BaziAnalyzer
 from utils.ziwei_json import get_astrolabe_text
 from utils.prompt import AgentSystemMessage
+from config import QWEN_MAX_CONFIG, DEEPSEEK_CONFIG
 
 
 class BaziAnalysisTeam:
@@ -29,33 +30,21 @@ class BaziAnalysisTeam:
     def __init__(self):
         # 初始化模型客户端
         self.model_client_qwenMax = OpenAIChatCompletionClient(
-            model="qwen-max",
-            api_key="",
-            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-            model_info={
-                "vision": False,
-                "function_calling": True,
-                "json_output": True,
-                "family": ModelFamily.UNKNOWN,
-                "structured_output": True,
-            },
-            temperature=0.1,
-            max_tokens=8192
+            model=QWEN_MAX_CONFIG["model"],
+            api_key=QWEN_MAX_CONFIG["api_key"],
+            base_url=QWEN_MAX_CONFIG["base_url"],
+            model_info=QWEN_MAX_CONFIG["model_info"],
+            temperature=QWEN_MAX_CONFIG["temperature"],
+            max_tokens=QWEN_MAX_CONFIG["max_tokens"]
         )
 
         self.model_client_deepseekR1 = OpenAIChatCompletionClient(
-            model="deepseek-chat",
-            api_key="",
-            base_url="https://api.deepseek.com/v1",
-            model_info={
-                "vision": False,
-                "function_calling": True,
-                "json_output": False,
-                "family": ModelFamily.UNKNOWN,
-                "structured_output": False,
-            },
-            temperature=0.3,
-            max_tokens=8192
+            model=DEEPSEEK_CONFIG["model"],
+            api_key=DEEPSEEK_CONFIG["api_key"],
+            base_url=DEEPSEEK_CONFIG["base_url"],
+            model_info=DEEPSEEK_CONFIG["model_info"],
+            temperature=DEEPSEEK_CONFIG["temperature"],
+            max_tokens=DEEPSEEK_CONFIG["max_tokens"]
         )
         
         # 初始化工具

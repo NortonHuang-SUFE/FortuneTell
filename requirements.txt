@@ -1,8 +1,10 @@
-requests>=2.28.0
+flask>=2.0.0
 openai>=1.0.0
 lunar-python>=0.3.0
 colorama>=0.4.6
+bidict>=0.22.1
 autogen-core>=0.2.0
 autogen-agentchat>=0.2.0
 autogen-ext>=0.2.0
-typing-extensions>=4.5.0 
+typing-extensions>=4.5.0
+requests>=2.31.0 
