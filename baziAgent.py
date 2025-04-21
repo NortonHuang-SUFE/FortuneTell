@@ -98,7 +98,18 @@ class BaziAnalysisTeam:
         根据用户输入的阳历或阴历的出生年份、月份、日期、时间，并结合用户是否为女性，得到用户的八字相关数据
         """
         analyzer = BaziAnalyzer()
-        result = analyzer.analyze_bazi(year, month, day, time, minute, gender, solar, run_month)
+        result = json.dumps(analyzer.analyze_bazi(year, month, day, time, minute, gender, solar, run_month), ensure_ascii=False, indent=None)
+        
+        # 清理特殊字符
+        # 替换全角空格为普通空格
+        result = result.replace('\u3000', ' ')
+        # 替换其他可能的特殊字符
+        result = result.replace('\\n', ' ')
+        result = result.replace('\\t', ' ')
+        result = result.replace('\\r', ' ')
+        # 移除多余的空格
+        result = ' '.join(result.split())
+        
         return result
 
     async def _ziwei_paipan_tool(self, date: Annotated[str, "日期"], 
