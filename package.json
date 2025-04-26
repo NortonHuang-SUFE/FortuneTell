@@ -1,0 +1,12 @@
+{
+  "name": "fortune-tell",
+  "version": "1.0.0",
+  "description": "Astrology image generator service",
+  "main": "utils/astrology_image_generator.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "canvas": "^3.1.0"
+  }
+}
