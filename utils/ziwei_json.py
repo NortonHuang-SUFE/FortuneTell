@@ -258,13 +258,14 @@ def convert_yearly_array_to_text(yearly_array):
     output_lines.append("---------大限与流年信息----------")
     return "\n".join(output_lines)
 
-def get_astrolabe_text(date, timezone, gender, period, is_solar=True, base_url="http://localhost:3000"):
+def get_astrolabe_text(date, hour, gender, period, is_solar=True, base_url="http://localhost:3000"):
     """
     获取紫微斗数文本描述，包括本命盘和流年信息。
 
     参数:
     date (str): 日期字符串，格式为 "YYYY-MM-DD"
-    timezone (int): 时区偏移量
+    hour (int): 小时 (0-23)
+    minute (int): 分钟 (0-59)
     gender (str): 性别
     period (list): 时间段，格式为 ["YYYY-MM-DD", "YYYY-MM-DD"]
     is_solar (bool): 是否为阳历数据，默认为 True
@@ -273,6 +274,11 @@ def get_astrolabe_text(date, timezone, gender, period, is_solar=True, base_url="
     返回:
     str: 完整的紫微斗数文本描述
     """
+    # 将时间转换为时辰序号
+    timezone = (hour + 1) // 2
+    if timezone == 12:  # 处理23:00-1:00的情况
+        timezone = 0
+    
     # 初始化 API 客户端
     solar_api = SolarAPI(base_url)
     
@@ -295,5 +301,5 @@ def get_astrolabe_text(date, timezone, gender, period, is_solar=True, base_url="
     return combined_text
 
 # 示例使用
-#result = get_astrolabe_text("2000-8-16", 2, "女", ["2025-01-01", "2026-01-02"])
+#result = get_astrolabe_text("2000-8-16", 14, 30, "女", ["2025-01-01", "2026-01-02"])
 #print(result)

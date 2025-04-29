@@ -1,24 +1,29 @@
 import asyncio
 from typing_extensions import Annotated
 import json
+from typing import Literal
+from pydantic import BaseModel
 
 from autogen_core.tools import FunctionTool
-from autogen_core import CancellationToken
-from autogen_agentchat.agents import AssistantAgent, UserProxyAgent
-from autogen_agentchat.messages import StructuredMessage, TextMessage
 from autogen_agentchat.ui import Console
 from autogen_ext.models.openai import OpenAIChatCompletionClient
 from autogen_core.models import ModelFamily
 from autogen_agentchat.conditions import TextMentionTermination
 from autogen_agentchat.teams import RoundRobinGroupChat
 from autogen_agentchat.base import TaskResult
-from autogen_agentchat.base import Handoff
-from autogen_agentchat.conditions import HandoffTermination
+from autogen_agentchat.agents import AssistantAgent
+from autogen_agentchat.messages import StructuredMessage
 
 from utils.bazi_json import BaziAnalyzer
 from utils.ziwei_json import get_astrolabe_text
-from utils.prompt import AgentSystemMessage
-from config import QWEN_MAX_CONFIG, DEEPSEEK_CONFIG
+from utils.prompt import AgentSystemMessage, ToolDescription
+from config import QWEN_MAX_CONFIG, DEEPSEEK_CONFIG, ZHIPU_CONFIG, QWEN3_CONFIG
+
+
+class AgentResponse(BaseModel):
+    """Agent的响应格式"""
+    main_response: str  
+    summary: str  
 
 
 class BaziAnalysisTeam:
@@ -46,10 +51,19 @@ class BaziAnalysisTeam:
             temperature=DEEPSEEK_CONFIG["temperature"],
             max_tokens=DEEPSEEK_CONFIG["max_tokens"]
         )
+
+        self.model_client_glmZ1Airx = OpenAIChatCompletionClient(
+            model=ZHIPU_CONFIG["model"],
+            api_key=ZHIPU_CONFIG["api_key"],
+            base_url=ZHIPU_CONFIG["base_url"],
+            model_info=ZHIPU_CONFIG["model_info"],
+            temperature=ZHIPU_CONFIG["temperature"],
+            max_tokens=ZHIPU_CONFIG["max_tokens"]
+        )
         
         # 初始化工具
-        self.bazi_paipan_tool = FunctionTool(self._bazi_paipan_tool, description="根据用户的生日信息，得到用户的八字相关的基础信息")
-        self.ziwei_paipan_tool = FunctionTool(self._ziwei_paipan_tool, description="根据用户的生日信息，得到用户的紫微斗数相关的基础信息")
+        self.bazi_paipan_tool = FunctionTool(self._bazi_paipan_tool, description=ToolDescription.get("bazi_paipan_tool"))
+        self.ziwei_paipan_tool = FunctionTool(self._ziwei_paipan_tool, description=ToolDescription.get("ziwei_paipan_tool"))
         
         # 初始化代理
         self.agentBazi = AssistantAgent(
@@ -59,6 +73,7 @@ class BaziAnalysisTeam:
             description="一个熟悉中国八字命理体系的智能助手",
             system_message=AgentSystemMessage.get("baziAgent"),
             reflect_on_tool_use=True,
+            # output_content_type=AgentResponse,
         )
 
         self.agentZiwei = AssistantAgent(
@@ -68,11 +83,12 @@ class BaziAnalysisTeam:
             description="一个熟悉中国紫薇命理体系的智能助手",
             system_message=AgentSystemMessage.get("ziweiAgent"),
             reflect_on_tool_use=True,
+            # output_content_type=AgentResponse,
         )
 
         self.agentSummary = AssistantAgent(
             name="summary",
-            model_client=self.model_client_deepseekR1,
+            model_client=self.model_client_glmZ1Airx,
             system_message=AgentSystemMessage.get("summary"),
         )
         
@@ -83,7 +99,7 @@ class BaziAnalysisTeam:
         self.team = RoundRobinGroupChat(
             [self.agentBazi, self.agentZiwei, self.agentSummary], 
             termination_condition=self.text_termination,
-            max_turns=10
+            max_turns=10,
         )
     
     async def _bazi_paipan_tool(self, year: Annotated[int, "年份"], 
@@ -112,20 +128,24 @@ class BaziAnalysisTeam:
         
         return result
 
-    async def _ziwei_paipan_tool(self, date: Annotated[str, "日期"], 
-                                timezone: Annotated[int, "一天中的哪个时辰，用中国古代计时法。出生时辰序号【0~12】，0:子；1:丑；2:寅；3:卯；4:辰；5:巳；6:午；7:未；8:申；9:酉；10:戌；11:亥；12:子"], 
+    async def _ziwei_paipan_tool(self, date: Annotated[str, "日期，格式为YYYY-MM-DD"], 
+                                hour: Annotated[int, "出生时间（24小时制）"], 
                                 gender: Annotated[str, "性别，男或女"], 
-                                period: Annotated[list, "涉及的日期，格式为 ['YYYY-MM-DD', 'YYYY-MM-DD']"], 
-                                is_solar: Annotated[bool, "是否为阳历数据"] = True) -> str:
+                                period: Annotated[list, "涉及的日期，格式为 ['YYYY-MM-DD', 'YYYY-MM-DD']"]) -> str:
         """
+        根据用户输入的出生日期、时间和性别，获取紫微斗数命盘信息。
+
+        参数:
         date (str): 日期字符串，格式为 "YYYY-MM-DD"
-        timezone (int): 一天中的哪个时辰，用中国古代计时法
+        hour (int): 出生时间（24小时制）
         gender (str): 性别，男或女
         period (list): 涉及的日期，格式为 ["YYYY-MM-DD", "YYYY-MM-DD"]
         is_solar (bool): 是否为阳历数据，默认为 True
-        base_url (str): API 的基础 URL，默认为 "http://localhost:3000"
+
+        返回:
+        str: 紫微斗数命盘文本描述
         """
-        return get_astrolabe_text(date, timezone, gender, period, is_solar=is_solar, base_url="http://localhost:3000")
+        return get_astrolabe_text(date, hour, gender, period, is_solar=True, base_url="http://localhost:3000")
     
     def get_team(self):
         """返回初始化好的团队"""
@@ -142,11 +162,17 @@ async def run_bazi_analysis(task):
         if isinstance(message, TaskResult):
             print("停止原因:", message.stop_reason)
         else:
-            print(message)
+            if isinstance(message, StructuredMessage) and isinstance(message.content, AgentResponse):
+                print("\n主要回答:")
+                print(message.content.main_response)
+                print("\n总结:")
+                print(message.content.summary)
+            else:
+                print(message)
 
 
 # 示例任务
-task = "用户是北京时间1996年11月2日10:58【24小时制】出生在重庆永川的男生，今天是2025年4月15日，想要知道【我的直系领导什么时候能够被调走】"
+task = "用户是北京时间1996年1月1日0:31【24小时制】出生在重庆永川的男生，今天是2025年4月15日，想要知道【我的直系领导什么时候能够被调走】"
     
 # 运行异步函数
 if __name__ == "__main__":
